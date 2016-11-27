@@ -1,0 +1,29 @@
+A userspace library for interfacing with Logitech G710+ keyboards. This
+library makes use of hidapi for interacting with the keyboard at the
+HID level. While hidapi supports many other platforms, this has only
+been tested on Linux, and will likely need work to run elsewhere.
+
+There are two modes of operation provided by the hidapi: hidraw and
+libusb. As a result, this library supports both modes via two different
+libraries, much like hidapi. See the hidapi documentation for details.
+
+## Building and Installing
+
+The project uses Autotools, so the build and install process should be
+fairly straight forward. If the error "Failed to open ..." is thrown,
+ensure the running user has permission to read and write to the device
+file.
+
+    $ git clone https://github.com/jgeboski/libg710p.git
+    $ cd libg710p
+    $ ./autogen.sh --enable-tools
+    $ make
+
+Test locally:
+
+    $ ./tools/g710p-keys
+
+Install to the system:
+
+    $ make install
+    $ g710p-keys
