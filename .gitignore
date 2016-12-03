@@ -12,6 +12,7 @@ config.log
 config.status
 configure
 g710p-keys
+g710p-pulseaudio
 INSTALL
 libtool
 libtool.m4

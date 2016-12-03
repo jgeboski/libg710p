@@ -15,28 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
 #include <signal.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 
-#include <g710p.h>
+#include "g710p-tools-common.h"
 
 
 static int quit = 0;
 
-
-static void
-println(const char *format, ...)
-{
-    va_list ap;
-
-    va_start(ap, format);
-    vprintf(format, ap);
-    va_end(ap);
-    printf("\n");
-}
 
 static void
 sighandler(int signal)
@@ -47,66 +33,52 @@ sighandler(int signal)
 int
 main(int argc, const char *argv[])
 {
-    char **devlist;
-    g710p_device_t *dev;
-    g710p_device_t **devs;
     g710p_report_t report;
+    g710p_tools_device_t *tdev;
+    g710p_tools_device_t *tdevs;
     uint8_t keys;
-    uint8_t kb;
-    uint8_t wasd;
-    unsigned int devc;
-    unsigned int i;
+    unsigned int n;
 
-    assert(g710p_init());
-    devlist = g710p_device_list_get();
-    println("Found the following HID devices:");
+    tdevs = g710p_tools_devices_open();
 
-    for (i = 0; devlist[i] != NULL; i++) {
-        println("%s", devlist[i]);
+    if (tdevs == NULL) {
+        return EXIT_FAILURE;
     }
 
-    devc = i;
-    devs = malloc((sizeof *devs) * devc);
-
-    for (i = 0; i < devc; i++) {
-        devs[i] = g710p_open(devlist[i]);
-        assert(devs[i] != NULL);
-    }
-
-    g710p_device_list_free(devlist);
-    signal(SIGINT, sighandler);
-
-    assert(g710p_backlight_get_levels(devs[0], &kb, &wasd));
-    assert(g710p_backlight_set_levels(devs[0], 4, 0));
-
-    while (!quit) {
-        for (i = 0; i < devc; i++) {
-            dev = devs[i];
-
-            if (!g710p_report_get(dev, &report, 100)) {
-                continue;
-            }
-
-            println("Device %u:", i + 1);
-            println("  Report type: 0x%0x", report.type);
-            println("  Media Keys: 0x%0x", report.media_keys);
-            println("  G Keys: 0x%0x", report.g_keys);
-            println("  Keyboard Level: %u", report.kb_level);
-            println("  WASD Level: %u", report.wasd_level);
-            println("");
-
-            assert(g710p_mkeys_get_leds(dev, &keys));
-            keys ^= report.g_keys & G710P_KEY_MASK_M;
-            assert(g710p_mkeys_set_leds(dev, keys));
+    for (n = 1, tdev = tdevs; tdev != NULL; n++, tdev = tdev->next) {
+        if (!g710p_backlight_set_levels(tdev->dev, 4, 0)) {
+            g710p_tools_errorln("Failed to set backlight for device %u", n);
         }
     }
 
-    assert(g710p_backlight_set_levels(devs[0], kb, wasd));
+    signal(SIGINT, sighandler);
 
-    for (i = 0; i < devc; i++) {
-        g710p_close(devs[i]);
+    while (!quit) {
+        for (n = 1, tdev = tdevs; tdev != NULL; n++, tdev = tdev->next) {
+            if (!g710p_report_get(tdev->dev, &report, 100)) {
+                continue;
+            }
+
+            g710p_tools_println("Device %u:", n);
+            g710p_tools_println("  Report type: 0x%0x", report.type);
+            g710p_tools_println("  Media Keys: 0x%0x", report.media_keys);
+            g710p_tools_println("  G Keys: 0x%0x", report.g_keys);
+            g710p_tools_println("  Keyboard Level: %u", report.kb_level);
+            g710p_tools_println("  WASD Level: %u", report.wasd_level);
+            g710p_tools_println("");
+
+            if (!g710p_mkeys_get_leds(tdev->dev, &keys)) {
+                g710p_tools_errorln("Failed to get LEDs for device %u", n);
+            }
+
+            keys ^= report.g_keys & G710P_KEY_MASK_M;
+
+            if (!g710p_mkeys_set_leds(tdev->dev, keys)) {
+                g710p_tools_errorln("Failed to set LEDs for device %u", n);
+            }
+        }
     }
 
-    assert(g710p_exit());
+    g710p_tools_devices_close(tdevs);
     return EXIT_SUCCESS;
 }

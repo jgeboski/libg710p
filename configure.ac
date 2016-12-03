@@ -54,6 +54,16 @@ AC_ARG_ENABLE(
 )
 
 AC_ARG_ENABLE(
+    [pulseaudio-tool],
+    [AS_HELP_STRING(
+        [--enable-pulseaudio-tool],
+        [Enable the building and installing of the PulseAudio tool]
+    )],
+    [ENABLE_PULSEAUDIO_TOOL="$enableval"],
+    [ENABLE_PULSEAUDIO_TOOL="no"]
+)
+
+AC_ARG_ENABLE(
     [warnings],
     [AS_HELP_STRING(
         [--enable-warnings],
@@ -61,6 +71,13 @@ AC_ARG_ENABLE(
     )],
     [ENABLE_WARNINGS="$enableval"],
     [ENABLE_WARNINGS="no"]
+)
+
+AS_IF(
+    [test "x$ENABLE_PULSEAUDIO_TOOL" == "xyes"],
+    [PKG_CHECK_MODULES([LIBPULSE], [libpulse])
+     AC_CHECK_HEADER([argp.h], [], [AC_MSG_ERROR([argp.h missing.])])
+     AC_CHECK_FUNCS([argp_parse], [], [AC_MSG_ERROR([argp_parse() missing.])])]
 )
 
 AS_IF(
@@ -78,6 +95,8 @@ AS_IF(
 )
 
 AM_CONDITIONAL([ENABLE_TOOLS], [test "x$ENABLE_TOOLS" == "xyes"])
+AM_CONDITIONAL([ENABLE_PULSEAUDIO_TOOL], [test "x$ENABLE_PULSEAUDIO_TOOL" == "xyes"])
+
 PKG_CHECK_MODULES([HIDAPI_HIDRAW], [hidapi-hidraw])
 PKG_CHECK_MODULES([HIDAPI_LIBUSB], [hidapi-libusb])
 
