@@ -1,0 +1,2 @@
+SUBSYSTEMS=="usb", ENV{ID_USB_INTERFACE_NUM}="$attr{bInterfaceNumber}"
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c24d", ENV{ID_USB_INTERFACE_NUM}=="01", MODE="0666"

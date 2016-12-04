@@ -73,6 +73,16 @@ AC_ARG_ENABLE(
     [ENABLE_WARNINGS="no"]
 )
 
+AC_ARG_WITH(
+    [udev-dir],
+    [AS_HELP_STRING(
+        [--with-udev-dir],
+        [Path of the base udev directory. If 'no', udev files are disabled.]
+    )],
+    [UDEV_DIR="$withval"],
+    [UDEV_DIR="\$(prefix)/lib/udev"]
+)
+
 AS_IF(
     [test "x$ENABLE_PULSEAUDIO_TOOL" == "xyes"],
     [PKG_CHECK_MODULES([LIBPULSE], [libpulse])
@@ -94,14 +104,18 @@ AS_IF(
      -Wpointer-arith"]
 )
 
+AC_SUBST([UDEV_DIR])
+
 AM_CONDITIONAL([ENABLE_TOOLS], [test "x$ENABLE_TOOLS" == "xyes"])
 AM_CONDITIONAL([ENABLE_PULSEAUDIO_TOOL], [test "x$ENABLE_PULSEAUDIO_TOOL" == "xyes"])
+AM_CONDITIONAL([WITH_UDEV_DIR], [test "x$UDEV_DIR" != "xno"])
 
 PKG_CHECK_MODULES([HIDAPI_HIDRAW], [hidapi-hidraw])
 PKG_CHECK_MODULES([HIDAPI_LIBUSB], [hidapi-libusb])
 
 AC_CONFIG_FILES([
     Makefile
+    data/Makefile
     libg710p/libg710p-hidraw.pc
     libg710p/libg710p-libusb.pc
     libg710p/Makefile
