@@ -18,10 +18,14 @@
 #include <argp.h>
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <pulse/pulseaudio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "g710p-tools-common.h"
 
@@ -37,6 +41,7 @@ typedef struct user_data user_data_t;
 struct user_data
 {
     g710p_tools_device_t *tdevs;
+    int daemonize;
     int verbose;
     pa_mainloop_api *mlapi;
     pa_stream *s;
@@ -184,12 +189,45 @@ signal_callback(
     mlapi->quit(mlapi, EXIT_SUCCESS);
 }
 
+static int
+daemonize(void)
+{
+    int fd;
+
+    switch (fork()) {
+    case 0:
+        break;
+
+    case -1:
+        return 0;
+
+    default:
+        exit(EXIT_SUCCESS);
+    }
+
+    fd = open("/dev/null", O_RDWR);
+
+    if (fd == -1) {
+        return 0;
+    }
+
+    return (setsid() != -1) &&
+           (chdir("/") != -1) &&
+           (dup2(fd, STDIN_FILENO) != -1) &&
+           (dup2(fd, STDOUT_FILENO) != -1) &&
+           (dup2(fd, STDERR_FILENO) != -1);
+}
+
 static error_t
 parse_opt(int key, char *arg, struct argp_state *state)
 {
     user_data_t *udata = state->input;
 
     switch (key) {
+    case 'd':
+        udata->daemonize = 1;
+        break;
+
     case 'p':
         udata->peak_max = atoi(arg);
 
@@ -218,6 +256,10 @@ parse_opt(int key, char *arg, struct argp_state *state)
         if (state->arg_num != 1) {
             argp_usage(state);
         }
+
+        if (udata->daemonize && udata->verbose) {
+            udata->verbose = 0;
+        }
         break;
 
     default:
@@ -239,6 +281,7 @@ main(int argc, char *argv[])
     user_data_t udata;
 
     static const struct argp_option options[] = {
+        {"daemonize", 'd', NULL, 0, "Fork the process to the background", 0},
         {"peak-max", 'p', "MAX", 0, "Maximum PCM value (133 <= x <= 255)", 0},
         {"verbose", 'v', NULL, 0, "Verbosely print additional messages", 0},
         {NULL}
@@ -259,6 +302,12 @@ main(int argc, char *argv[])
     tdevs = g710p_tools_devices_open();
 
     if (tdevs == NULL) {
+        return EXIT_FAILURE;
+    }
+
+    /* Daemonize before initializing PulseAudio */
+    if (udata.daemonize && !daemonize()) {
+        g710p_tools_errorln("Failed to daemonize");
         return EXIT_FAILURE;
     }
 
