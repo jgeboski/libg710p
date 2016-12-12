@@ -33,6 +33,8 @@
 #define LEVEL_CNT  5
 #define LEVEL_MAX  4
 #define PEAK_MIN  128
+#define PEAK_PAD  4
+#define SAMPLE_ITERS  25
 
 
 typedef struct user_data user_data_t;
@@ -41,18 +43,54 @@ typedef struct user_data user_data_t;
 struct user_data
 {
     g710p_tools_device_t *tdevs;
-    int daemonize;
-    int verbose;
     pa_mainloop_api *mlapi;
     pa_stream *s;
-    uint8_t peak_max;
+
+    int daemonize;
+    int verbose;
     uint32_t idx;
+
+    uint8_t peak_chunk;
+    uint8_t peak_max;
+    uint8_t peak_span;
+
+    int seen_max;
+    unsigned int iters;
 };
 
 
 const char *argp_program_version = PACKAGE_STRING;
 const char *argp_program_bug_address = PACKAGE_BUGREPORT;
 
+
+static void
+peak_max_set(user_data_t *udata, uint8_t peak_max)
+{
+    uint8_t chunk;
+    uint8_t pad;
+    uint8_t span;
+
+    if (peak_max < (PEAK_MIN + LEVEL_CNT)) {
+        peak_max = PEAK_MIN + LEVEL_CNT;
+    }
+
+    span = peak_max - PEAK_MIN;
+    chunk = span / LEVEL_CNT;
+    pad = chunk * 2;
+
+    if (peak_max < (UINT8_MAX - pad)) {
+        peak_max += pad;
+    } else {
+        peak_max = UINT8_MAX;
+    }
+
+    span = peak_max - PEAK_MIN;
+    chunk = span / LEVEL_CNT;
+
+    udata->peak_chunk = chunk;
+    udata->peak_max = peak_max;
+    udata->peak_span = span;
+}
 
 static void
 keyboard_set_leds(g710p_tools_device_t *tdevs, uint8_t level)
@@ -90,7 +128,6 @@ stream_read_callback(pa_stream *s, size_t len, void *userdata)
     const uint8_t *data;
     uint8_t level;
     uint8_t peak;
-    uint8_t span;
     user_data_t *udata = userdata;
 
     if (pa_stream_peek(s, (void *) &data, &len) < 0) {
@@ -107,20 +144,38 @@ stream_read_callback(pa_stream *s, size_t len, void *userdata)
         return;
     }
 
-    peak = data[len >> 1];
-    span = udata->peak_max - PEAK_MIN;
-    level = (span - (udata->peak_max - peak)) / (span / LEVEL_CNT);
+    if (udata->iters == SAMPLE_ITERS) {
+        if (!udata->seen_max) {
+            peak_max_set(udata, PEAK_MIN);
+        } else {
+            udata->seen_max = 0;
+        }
 
-    if (level > LEVEL_MAX) {
+        udata->iters = 0;
+    }
+
+    peak = data[len >> 1];
+
+    if (peak > udata->peak_max) {
+        peak_max_set(udata, peak);
+    }
+
+    level = udata->peak_span - (udata->peak_max - peak);
+    level /= udata->peak_chunk;
+    udata->iters++;
+
+    if (level == LEVEL_MAX) {
+        udata->seen_max = 1;
+    } else if (level > LEVEL_MAX) {
         level = LEVEL_MAX;
     }
 
     if (udata->verbose) {
         g710p_tools_println(
-            "Peak: %u, Level: %u, Peak Max: %u",
+            "Peak: %u, Peak Max: %u, Level: %u",
             peak,
-            level,
-            udata->peak_max
+            udata->peak_max,
+            level
         );
     }
 
@@ -228,20 +283,8 @@ parse_opt(int key, char *arg, struct argp_state *state)
         udata->daemonize = 1;
         break;
 
-    case 'p':
-        udata->peak_max = atoi(arg);
-
-        if (udata->peak_max < (PEAK_MIN + LEVEL_CNT)) {
-            udata->peak_max = PEAK_MIN + LEVEL_CNT;
-        }
-        break;
-
     case 'v':
         udata->verbose = 1;
-        break;
-
-    case ARGP_KEY_INIT:
-        udata->peak_max = PEAK_MIN + 64;
         break;
 
     case ARGP_KEY_ARG:
@@ -282,7 +325,6 @@ main(int argc, char *argv[])
 
     static const struct argp_option options[] = {
         {"daemonize", 'd', NULL, 0, "Fork the process to the background", 0},
-        {"peak-max", 'p', "MAX", 0, "Maximum PCM value (133 <= x <= 255)", 0},
         {"verbose", 'v', NULL, 0, "Verbosely print additional messages", 0},
         {NULL}
     };
@@ -299,6 +341,7 @@ main(int argc, char *argv[])
 
     memset(&udata, 0, sizeof udata);
     argp_parse(&argp, argc, argv, 0, NULL, &udata);
+    peak_max_set(&udata, PEAK_MIN);
     tdevs = g710p_tools_devices_open();
 
     if (tdevs == NULL) {
