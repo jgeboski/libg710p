@@ -62,25 +62,25 @@ keyboard_set_leds(g710p_tools_device_t *tdevs, uint8_t level)
 
     assert(level <= 4);
 
-    if (level > 0) {
+    if (level <= 3) {
         m_keys |= G710P_KEY_M1;
     }
 
-    if (level > 1) {
+    if (level <= 2) {
         m_keys |= G710P_KEY_M2;
     }
 
-    if (level > 2) {
+    if (level <= 1) {
         m_keys |= G710P_KEY_M3;
     }
 
-    if (level > 3) {
+    if (level == 0) {
         m_keys |= G710P_KEY_MR;
     }
 
     for (tdev = tdevs; tdev != NULL; tdev = tdev->next) {
         g710p_mkeys_set_leds(tdev->dev, m_keys);
-        g710p_backlight_set_levels(tdev->dev, LEVEL_MAX - level, level);
+        g710p_backlight_set_levels(tdev->dev, level, level);
     }
 }
 
@@ -88,8 +88,8 @@ static void
 stream_read_callback(pa_stream *s, size_t len, void *userdata)
 {
     const uint8_t *data;
-    uint8_t level;
-    uint8_t peak;
+    uint8_t level = LEVEL_MAX;
+    uint8_t sample;
     uint8_t span;
     user_data_t *udata = userdata;
 
@@ -107,9 +107,12 @@ stream_read_callback(pa_stream *s, size_t len, void *userdata)
         return;
     }
 
-    peak = data[len >> 1];
     span = udata->peak_max - PEAK_MIN;
-    level = (span - (udata->peak_max - peak)) / (span / LEVEL_CNT);
+    sample = data[len >> 1] - PEAK_MIN;
+
+    if (sample != 0) {
+        level = sample / (span / LEVEL_CNT);
+    }
 
     if (level > LEVEL_MAX) {
         level = LEVEL_MAX;
@@ -117,10 +120,10 @@ stream_read_callback(pa_stream *s, size_t len, void *userdata)
 
     if (udata->verbose) {
         g710p_tools_println(
-            "Peak: %u, Level: %u, Peak Max: %u",
-            peak,
-            level,
-            udata->peak_max
+            "Sample: %u (Max: %u), Level: %u",
+            sample,
+            span,
+            level
         );
     }
 
